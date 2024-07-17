@@ -43,7 +43,57 @@ async function run() {
        res.send({ token });
      })
 
+     // middlewares 
+     const verifyToken = (req, res, next) => {
+      console.log('inside verify token', req.headers.authorization);
+      if (!req.headers.authorization) {
+        return res.status(401).send({ message: 'unauthorized access' });
+      }
+      const token = req.headers.authorization.split(' ')[1];
+      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+          return res.status(401).send({ message: 'unauthorized access' })
+        }
+        req.decoded = decoded;
+        next();
+      })
+    }
+
+    const verifyAdmin = async (req, res, next) => {
+      const emailOrPhone = req.decoded.emailOrPhone;
+      const query = { emailOrPhone: emailOrPhone };
+      const user = await userCollection.findOne(query);
+      const isAdmin = user?.role === 'admin';
+      if (!isAdmin) {
+        return res.status(403).send({ message: 'forbidden access' });
+      }
+      next();
+    }
+    const verifyAgent = async (req, res, next) => {
+      const emailOrPhone = req.decoded.emailOrPhone;
+      const query = { emailOrPhone: emailOrPhone };
+      const user = await userCollection.findOne(query);
+      const isAgent = user?.role === 'agent';
+      if (!isAgent) {
+        return res.status(403).send({ message: 'forbidden access' });
+      }
+      next();
+    }
+
     // users related api
+    app.get('/users/admin/:emailOrPhone', verifyToken, async (req, res)=>{
+      const emailOrPhone = req.params.emailOrPhone;
+      if (emailOrPhone !== req.decoded.emailOrPhone){
+        return res.status(403).send({ message: 'forbidden access' })
+      }
+      const query = {emailOrPhone:emailOrPhone};
+      const user = await userCollection.findOne(query);
+      let admin = false;
+      if(user){
+        admin = user?.role === 'admin';
+      }
+      res.send({admin})
+    })
     app.post('/users', async (req, res) => {
         const user = req.body;
         const query = { emailOrPhone: user.emailOrPhone }
@@ -77,7 +127,7 @@ async function run() {
         const users = await userCollection.find().toArray();
         res.send(users)
       })
-       app.get('/user/:emailOrPhone', async (req, res)=>{
+       app.get('/user/:emailOrPhone',verifyToken, async (req, res)=>{
         const emailOrPhone = req.params.emailOrPhone
         const query = {emailOrPhone: emailOrPhone}
         const user = await userCollection.findOne(query)

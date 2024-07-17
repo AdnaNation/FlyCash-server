@@ -2,7 +2,9 @@ const { MongoClient, ServerApiVersion } = require('mongodb');
 const express = require('express')
 const app = express()
 require('dotenv').config()
+const jwt = require('jsonwebtoken');
 const cors = require('cors')
+const bcrypt = require('bcryptjs');
 const port = process.env.PORT || 5000;
 
 // middleware
@@ -33,6 +35,14 @@ async function run() {
     // await client.connect();
     const userCollection = client.db("FlyCashDB").collection("users");
 
+      // jwt related api
+      app.post('/jwt', async (req, res) => {
+        const user = req.body;
+        console.log(user)
+       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '24h' });
+       res.send({ token });
+     })
+
     // users related api
     app.post('/users', async (req, res) => {
         const user = req.body;
@@ -44,6 +54,24 @@ async function run() {
         const result = await userCollection.insertOne(user);
         res.send(result);
       });
+      app.post('/user', async( req, res)=>{
+        const user = req.body;
+        console.log(user);
+        const query = {emailOrPhone: user.emailOrPhone}
+        const userFromDb = await userCollection.findOne(query)
+        console.log(userFromDb)
+        if (!userFromDb) {
+            return res.status(400).json({ message: "User with this email/number doesn't exist" });
+          }
+
+          const isPinValid = await bcrypt.compare(req.body.hashedPin, userFromDb.pin);
+          console.log(isPinValid)
+  if (!isPinValid) {
+    return res.status(400).send({ message: "Incorrect Pin" });
+  }
+
+  res.status(200).send({ message: 'Login successful' });
+      })
 
       app.get('/users', async (req, res)=>{
         const users = await userCollection.find().toArray();
@@ -55,6 +83,8 @@ async function run() {
         const user = await userCollection.findOne(query)
         res.send(user)
        })
+
+
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
